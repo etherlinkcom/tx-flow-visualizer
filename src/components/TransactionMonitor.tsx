@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { TransactionItem } from "./TransactionItem";
+import { BlockColumn } from "./BlockColumn";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -9,6 +10,12 @@ interface Transaction {
   isValidated: boolean;
   shouldExit: boolean;
   timestamp: number;
+}
+
+interface Block {
+  id: number;
+  isValidated: boolean;
+  transactionCount: number;
 }
 
 type StreamKey = "included" | "receipts" | "heads";
@@ -104,7 +111,9 @@ const DUMMY_NEW_HEAD = {
 export const TransactionMonitor = () => {
   const streamEndpoint = import.meta.env.VITE_TEZOS_WS_URL;
   const requestIdRef = useRef(1);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [blocks, setBlocks] = useState<Block[]>([]);
   const [status, setStatus] = useState<Record<StreamKey, StreamStatus>>({
     included: "disconnected",
     receipts: "disconnected",
@@ -145,8 +154,38 @@ export const TransactionMonitor = () => {
       transactions.some(tx => !tx.shouldExit)
     ) {
       setTransactions(prev => prev.map(tx => ({ ...tx, shouldExit: true })));
+      
+      // Add validated block
+      setBlocks(prev => {
+        const newBlock: Block = {
+          id: page,
+          isValidated: false,
+          transactionCount: transactions.length,
+        };
+        return [...prev, newBlock];
+      });
+      
+      // Validate block after squeeze animation
+      setTimeout(() => {
+        setBlocks(prev => 
+          prev.map(b => b.id === page ? { ...b, isValidated: true } : b)
+        );
+      }, 700);
     }
-  }, [transactions]);
+  }, [transactions, page]);
+
+  // Auto-scroll when last transaction slides in
+  useEffect(() => {
+    if (transactions.length > 0 && scrollRef.current) {
+      const timer = setTimeout(() => {
+        scrollRef.current?.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [transactions.length]);
 
   useEffect(() => {
     if (!streamEndpoint) {
@@ -192,6 +231,7 @@ export const TransactionMonitor = () => {
 
               const restartTimeout = window.setTimeout(() => {
                 setTransactions([]);
+                setPage(prev => prev + 1);
                 startCycle();
               }, 500);
 
@@ -347,37 +387,42 @@ export const TransactionMonitor = () => {
           )}
         </div>
 
-        <Card className="p-6 bg-card/50 border-border">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-foreground">
-              Active Block
-            </h2>
-            <span className="text-sm text-muted-foreground">
-              {transactions.length} active transactions
-            </span>
-          </div>
+        <div className="flex gap-6">
+          <BlockColumn blocks={blocks} />
+          
+          <Card className="flex-1 p-6 bg-card/50 border-border">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-foreground">
+                Active Block
+              </h2>
+              <span className="text-sm text-muted-foreground">
+                {transactions.length} active transactions
+              </span>
+            </div>
 
-          <div
-            className="space-y-2 max-h-[360px] overflow-y-auto pr-2"
-          >
-            {transactions.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <p className="mb-2">No transactions yet</p>
-                <p className="text-sm">Waiting for incoming transactions...</p>
-              </div>
-            ) : (
-              transactions.map((tx) => (
-                <TransactionItem
-                  key={tx.id}
-                  hash={tx.hash}
-                  isValidated={tx.isValidated}
-                  shouldExit={tx.shouldExit}
-                  onAnimationComplete={() => handleAnimationComplete(tx.id)}
-                />
-              ))
-            )}
-          </div>
-        </Card>
+            <div
+              ref={scrollRef}
+              className="space-y-2 max-h-[360px] overflow-y-auto pr-2"
+            >
+              {transactions.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="mb-2">No transactions yet</p>
+                  <p className="text-sm">Waiting for incoming transactions...</p>
+                </div>
+              ) : (
+                transactions.map((tx) => (
+                  <TransactionItem
+                    key={tx.id}
+                    hash={tx.hash}
+                    isValidated={tx.isValidated}
+                    shouldExit={tx.shouldExit}
+                    onAnimationComplete={() => handleAnimationComplete(tx.id)}
+                  />
+                ))
+              )}
+            </div>
+          </Card>
+        </div>
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
           <p>

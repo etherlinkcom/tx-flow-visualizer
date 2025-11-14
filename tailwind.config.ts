@@ -112,13 +112,19 @@ export default {
             opacity: "0.6",
           },
         },
+        "squeeze-in": {
+          "0%": { transform: "scale(1.2) translateX(100%)", opacity: "0" },
+          "50%": { transform: "scale(0.8) translateX(0)", opacity: "1" },
+          "100%": { transform: "scale(1) translateX(0)", opacity: "1" }
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "slide-in": "slide-in 0.6s ease-out forwards",
-        "slide-out": "slide-out 0.8s ease-out forwards",
-        "pulse-glow": "pulse-glow 2s ease-in-out infinite",
+        "slide-in": "slide-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "slide-out": "slide-out 0.8s cubic-bezier(0.4, 0, 1, 1) forwards",
+        "pulse-glow": "pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "squeeze-in": "squeeze-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
       },
     },
   },
