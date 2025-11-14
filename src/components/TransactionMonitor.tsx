@@ -134,10 +134,19 @@ export const TransactionMonitor = () => {
       }
 
       const updated = [...prev];
-      updated[index] = { ...updated[index], isValidated: true, shouldExit: true };
+      updated[index] = { ...updated[index], isValidated: true };
       return updated;
     });
   }, []);
+  useEffect(() => {
+    if (
+      transactions.length > 0 &&
+      transactions.every(tx => tx.isValidated) &&
+      transactions.some(tx => !tx.shouldExit)
+    ) {
+      setTransactions(prev => prev.map(tx => ({ ...tx, shouldExit: true })));
+    }
+  }, [transactions]);
 
   useEffect(() => {
     if (!streamEndpoint) {
@@ -328,22 +337,13 @@ export const TransactionMonitor = () => {
               variant={headsActive ? "default" : "secondary"}
               className={headsActive ? "bg-primary text-primary-foreground" : ""}
             >
-              newHeads: {status.heads}
+              Block stream: {status.heads}
             </Badge>
           </div>
           {!streamEndpoint && (
             <p className="text-sm text-destructive mt-3">
               Using demo stream data. Configure <code className="font-mono">VITE_TEZOS_WS_URL</code> to connect to a live node.
             </p>
-          )}
-
-          {lastHead && (
-            <Card className="mt-4 p-4 bg-card/60 border border-border/60">
-              <h3 className="text-sm font-semibold mb-2 text-foreground">Latest newHeads payload</h3>
-              <pre className="text-xs bg-muted/40 text-muted-foreground p-3 rounded overflow-x-auto">
-                {JSON.stringify(lastHead, null, 2)}
-              </pre>
-            </Card>
           )}
         </div>
 
