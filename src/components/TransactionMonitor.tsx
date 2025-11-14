@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { TransactionItem } from "./TransactionItem";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,103 +10,141 @@ interface Transaction {
   timestamp: number;
 }
 
+type StreamKey = "stream1" | "stream2";
+type StreamStatus = "connecting" | "connected" | "disconnected" | "error" | "no-url";
+
+const parseTxHash = (payload: unknown): string | null => {
+  if (typeof payload === "string") {
+    return payload;
+  }
+
+  if (typeof payload === "object" && payload !== null) {
+    const candidate =
+      (payload as Record<string, unknown>).hash ??
+      (payload as Record<string, unknown>).transactionHash ??
+      (payload as Record<string, unknown>).tx_hash ??
+      (payload as Record<string, unknown>).txHash;
+
+    return typeof candidate === "string" ? candidate : null;
+  }
+
+  return null;
+};
+
 export const TransactionMonitor = () => {
+  const streamEndpoint = import.meta.env.VITE_TEZOS_WS_URL;
+  const requestIdRef = useRef(1);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [ws1, setWs1] = useState<WebSocket | null>(null);
-  const [ws2, setWs2] = useState<WebSocket | null>(null);
-  const [status, setStatus] = useState({ stream1: "disconnected", stream2: "disconnected" });
+  const [status, setStatus] = useState<Record<StreamKey, StreamStatus>>({
+    stream1: "disconnected",
+    stream2: "disconnected",
+  });
 
   useEffect(() => {
-    // Simulated WebSocket connections
-    // In production, replace with actual eth_subscribe WebSocket URLs
-    
-    // Stream 1: Transaction hashes and timestamps
-    const socket1 = new WebSocket("wss://echo.websocket.org");
-    socket1.onopen = () => {
-      setStatus(prev => ({ ...prev, stream1: "connected" }));
-      console.log("Stream 1 connected");
-      
-      // Simulate incoming transactions
-      const interval = setInterval(() => {
-        const hash = `0x${Math.random().toString(16).substring(2, 66)}`;
-        socket1.send(JSON.stringify({ type: "tx", hash }));
-      }, 3000);
+    if (!streamEndpoint) {
+      setStatus({ stream1: "no-url", stream2: "no-url" });
+      return;
+    }
 
-      // Simulate timestamp events
-      const timestampInterval = setInterval(() => {
-        socket1.send(JSON.stringify({ type: "timestamp", value: Date.now() }));
-      }, 15000);
+    const subscribe = (
+      stream: StreamKey,
+      params: [string],
+      onResult: (payload: unknown) => void
+    ) => {
+      const socket = new WebSocket(streamEndpoint);
 
-      return () => {
-        clearInterval(interval);
-        clearInterval(timestampInterval);
+      setStatus(prev => ({ ...prev, [stream]: "connecting" }));
+
+      socket.onopen = () => {
+        setStatus(prev => ({ ...prev, [stream]: "connected" }));
+        const requestId = requestIdRef.current++;
+
+        socket.send(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: requestId,
+            method: "eth_subscribe",
+            params,
+          })
+        );
       };
-    };
 
-    socket1.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        if (data.type === "tx" && data.hash) {
-          setTransactions(prev => [
-            ...prev,
-            {
-              hash: data.hash,
-              isValidated: false,
-              shouldExit: false,
-              timestamp: Date.now(),
-            }
-          ]);
-        } else if (data.type === "timestamp") {
-          // Mark all transactions to exit
-          setTransactions(prev =>
-            prev.map(tx => ({ ...tx, shouldExit: true }))
-          );
+      socket.onmessage = (event) => {
+        let payload: unknown;
+        try {
+          payload = JSON.parse(event.data);
+        } catch (error) {
+          console.warn(`Malformed payload on ${stream}:`, error);
+          return;
         }
-      } catch (error) {
-        // Echo server sends back raw messages, this is expected
-      }
-    };
 
-    socket1.onerror = () => setStatus(prev => ({ ...prev, stream1: "error" }));
-    socket1.onclose = () => setStatus(prev => ({ ...prev, stream1: "disconnected" }));
-
-    // Stream 2: Receipts
-    const socket2 = new WebSocket("wss://echo.websocket.org");
-    socket2.onopen = () => {
-      setStatus(prev => ({ ...prev, stream2: "connected" }));
-      console.log("Stream 2 connected");
-    };
-
-    socket2.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        if (data.type === "receipt" && data.hash) {
-          setTransactions(prev =>
-            prev.map(tx =>
-              tx.hash === data.hash
-                ? { ...tx, isValidated: true }
-                : tx
-            )
-          );
+        if (
+          typeof payload === "object" &&
+          payload !== null &&
+          "method" in payload &&
+          (payload as { method?: string }).method === "eth_subscription"
+        ) {
+          const paramsPayload = (payload as { params?: { result?: unknown } }).params;
+          if (paramsPayload && "result" in paramsPayload) {
+            onResult(paramsPayload.result);
+          }
         }
-      } catch (error) {
-        // Echo server sends back raw messages, this is expected
-      }
+      };
+
+      socket.onerror = () => {
+        setStatus(prev => ({ ...prev, [stream]: "error" }));
+      };
+
+      socket.onclose = () => {
+        setStatus(prev => ({ ...prev, [stream]: "disconnected" }));
+      };
+
+      return socket;
     };
 
-    socket2.onerror = () => setStatus(prev => ({ ...prev, stream2: "error" }));
-    socket2.onclose = () => setStatus(prev => ({ ...prev, stream2: "disconnected" }));
+    const hashSocket = subscribe("stream1", ["tez_newIncludedTransactions"], (payload) => {
+      const hash = parseTxHash(payload);
+      if (!hash) {
+        return;
+      }
 
-    setWs1(socket1);
-    setWs2(socket2);
+      setTransactions(prev => {
+        if (prev.some(tx => tx.hash === hash)) {
+          return prev;
+        }
+
+        return [
+          ...prev,
+          {
+            hash,
+            isValidated: false,
+            shouldExit: false,
+            timestamp: Date.now(),
+          },
+        ];
+      });
+    });
+
+    const receiptSocket = subscribe("stream2", ["tez_newPreconfirmedReceipts"], (payload) => {
+      const hash = parseTxHash(payload);
+      if (!hash) {
+        return;
+      }
+
+      setTransactions(prev =>
+        prev.map(tx =>
+          tx.hash === hash
+            ? { ...tx, isValidated: true, shouldExit: true }
+            : tx
+        )
+      );
+    });
 
     return () => {
-      socket1.close();
-      socket2.close();
+      hashSocket?.close();
+      receiptSocket?.close();
     };
-  }, []);
+  }, [streamEndpoint]);
 
   const handleAnimationComplete = useCallback((hash: string) => {
     setTransactions(prev => prev.filter(tx => tx.hash !== hash));
@@ -135,6 +173,11 @@ export const TransactionMonitor = () => {
               Stream 2: {status.stream2}
             </Badge>
           </div>
+          {!streamEndpoint && (
+            <p className="text-sm text-destructive mt-3">
+              Configure <code className="font-mono">VITE_TEZOS_WS_URL</code> to establish both eth_subscribe streams.
+            </p>
+          )}
         </div>
 
         <Card className="p-6 bg-card/50 border-border">
