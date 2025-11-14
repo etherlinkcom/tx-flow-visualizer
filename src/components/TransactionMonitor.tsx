@@ -172,7 +172,7 @@ export const TransactionMonitor = () => {
         let receiptCount = 0;
 
         const txInterval = window.setInterval(() => {
-          if (txCount >= 100) {
+          if (txCount >= 20) {
             clearInterval(txInterval);
             return;
           }
@@ -183,7 +183,7 @@ export const TransactionMonitor = () => {
         intervalHandles.push(txInterval);
 
         const receiptInterval = window.setInterval(() => {
-          if (receiptCount >= 100) {
+          if (receiptCount >= 10) {
             clearInterval(receiptInterval);
 
             const headTimeout = window.setTimeout(() => {
@@ -204,7 +204,7 @@ export const TransactionMonitor = () => {
 
           validateTransaction(DUMMY_RECEIPT_HASH);
           receiptCount += 1;
-        }, 50);
+        }, 40);
         intervalHandles.push(receiptInterval);
       };
 
@@ -318,7 +318,7 @@ export const TransactionMonitor = () => {
           <h1 className="text-4xl font-bold mb-2 text-foreground tx-glow-cyan">
             Ethereum Transaction Monitor
           </h1>
-          <p className="text-muted-foreground">Real-time blockchain transaction tracking • Page {page}</p>
+          <p className="text-muted-foreground">Real-time pre-confirmations tracking • Block {page}</p>
           
           <div className="flex flex-wrap gap-3 mt-4">
             <Badge 
@@ -350,7 +350,7 @@ export const TransactionMonitor = () => {
         <Card className="p-6 bg-card/50 border-border">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold text-foreground">
-              Transaction Pool
+              Active Block
             </h2>
             <span className="text-sm text-muted-foreground">
               {transactions.length} active transactions
