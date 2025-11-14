@@ -357,7 +357,9 @@ export const TransactionMonitor = () => {
             </span>
           </div>
 
-          <div className="space-y-2 overflow-hidden">
+          <div
+            className="space-y-2 max-h-[360px] overflow-y-auto pr-2"
+          >
             {transactions.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <p className="mb-2">No transactions yet</p>

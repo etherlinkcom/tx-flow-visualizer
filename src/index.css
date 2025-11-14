@@ -110,7 +110,7 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground font-mono;
+    @apply bg-background text-foreground font-mono overflow-x-hidden;
   }
 }
 
