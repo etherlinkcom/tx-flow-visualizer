@@ -57,6 +57,10 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        tx: {
+          pending: "hsl(var(--tx-pending))",
+          validated: "hsl(var(--tx-validated))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -80,10 +84,41 @@ export default {
             height: "0",
           },
         },
+        "slide-in": {
+          "0%": {
+            transform: "translateX(-100%)",
+            opacity: "0",
+          },
+          "100%": {
+            transform: "translateX(0)",
+            opacity: "1",
+          },
+        },
+        "slide-out": {
+          "0%": {
+            transform: "translateX(0)",
+            opacity: "1",
+          },
+          "100%": {
+            transform: "translateX(150%)",
+            opacity: "0",
+          },
+        },
+        "pulse-glow": {
+          "0%, 100%": {
+            opacity: "1",
+          },
+          "50%": {
+            opacity: "0.6",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "slide-in": "slide-in 0.6s ease-out forwards",
+        "slide-out": "slide-out 0.8s ease-out forwards",
+        "pulse-glow": "pulse-glow 2s ease-in-out infinite",
       },
     },
   },
