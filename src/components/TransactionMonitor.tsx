@@ -19,7 +19,7 @@ interface Block {
 }
 
 type StreamKey = "included" | "receipts" | "heads";
-type StreamStatus = "connecting" | "connected" | "disconnected" | "error" | "demo";
+type StreamStatus = "connecting" | "connected" | "disconnected" | "error";
 
 const parseTxHash = (payload: unknown): string | null => {
   if (typeof payload === "string") {
@@ -41,71 +41,6 @@ const parseTxHash = (payload: unknown): string | null => {
   }
 
   return null;
-};
-
-const DUMMY_TRANSACTION_HASH = "0x85d995eba9763907fdf35cd2034144dd9d53ce32cbec21349d4b12823c6860c5";
-
-const DUMMY_RECEIPT = {
-  jsonrpc: "2.0",
-  id: 1,
-  result: {
-    blockHash: "0xa957d47df264a31badc3ae823e10ac1d444b098d9b73d204c40426e57f47e8c3",
-    blockNumber: "0xeff35f",
-    contractAddress: null,
-    cumulativeGasUsed: "0xa12515",
-    effectiveGasPrice: "0x5a9c688d4",
-    from: "0x6221a9c005f6e47eb398fd867784cacfdcfff4e7",
-    gasUsed: "0xb4c8",
-    logs: [
-      {
-        address: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
-        topics: [
-          "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925",
-          "0x0000000000000000000000006221a9c005f6e47eb398fd867784cacfdcfff4e7",
-          "0x0000000000000000000000001e0049783f008a0085193e00003d00cd54003c71",
-        ],
-        data: "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-        blockNumber: "0xeff35f",
-        transactionHash: DUMMY_TRANSACTION_HASH,
-        transactionIndex: "0x66",
-        blockHash: "0xa957d47df264a31badc3ae823e10ac1d444b098d9b73d204c40426e57f47e8c3",
-        logIndex: "0xfa",
-        removed: false,
-      },
-    ],
-    logsBloom:
-      "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000080000000000000000200000000000000000000020000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020001000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000010200000000000000000000000000000000000000000000000000000020000",
-    status: "0x1",
-    to: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
-    transactionHash: DUMMY_TRANSACTION_HASH,
-    transactionIndex: "0x66",
-    type: "0x2",
-  },
-};
-
-const DUMMY_RECEIPT_HASH = parseTxHash(DUMMY_RECEIPT) ?? DUMMY_TRANSACTION_HASH;
-
-const DUMMY_NEW_HEAD = {
-  number: "0xeff360",
-  hash: "0x4f345f23546817bfc595cec7b98315f9ee0d2d16a07101e6f5c5a9ad9275d0bc",
-  parentHash: "0x6db62144c816438b808bfad79243f44ed6c2f5d55bd5efd16ddbfa4938897d58",
-  nonce: "0x0000000000000000",
-  sha3Uncles: "0x1dcc4de8dec75d7aab85b567b6ccd41ad313a1c75aecc08e5f8f4d3536aee5d9",
-  logsBloom:
-    "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000080000000000000000200000000000000000000020000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020001000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000010200000000000000000000000000000000000000000000000000000020000",
-  transactionsRoot: "0xf0c2e5610de63853d5fae82d03a33951ff3ccd84589e25db94ec660d69a3b4da",
-  stateRoot: "0xa8a9d0f1d4af2e5c77fbc917bc902b0faf6cb9d8ff0f0eb5e8a0a58d4a5730fb",
-  receiptsRoot: "0x68d2bb0dacbb9dc0f2dd4ba3576c8cf6889d4a8da76c6cf10979f05de7975cdc",
-  miner: "0x0000000000000000000000000000000000000000",
-  difficulty: "0x0",
-  totalDifficulty: null,
-  extraData: "0x4c7578706c6f72652c20457468657265756d21",
-  size: "0x1f90",
-  gasLimit: "0x1c9c380",
-  gasUsed: "0x12ab34",
-  timestamp: "0x6521abcf",
-  transactions: [DUMMY_TRANSACTION_HASH],
-  uncles: [],
 };
 
 export const TransactionMonitor = () => {
@@ -189,70 +124,12 @@ export const TransactionMonitor = () => {
 
   useEffect(() => {
     if (!streamEndpoint) {
-      setStatus({ included: "demo", receipts: "demo", heads: "demo" });
+      setStatus({ included: "error", receipts: "error", heads: "error" });
       setPage(1);
+      setBlocks([]);
       setLastHead(null);
       setTransactions([]);
-
-      let intervalHandles: number[] = [];
-      let timeoutHandles: number[] = [];
-
-      const clearAll = () => {
-        intervalHandles.forEach(clearInterval);
-        timeoutHandles.forEach(clearTimeout);
-        intervalHandles = [];
-        timeoutHandles = [];
-      };
-
-      const startCycle = () => {
-        clearAll();
-
-        let txCount = 0;
-        let receiptCount = 0;
-
-        const txInterval = window.setInterval(() => {
-          if (txCount >= 20) {
-            clearInterval(txInterval);
-            return;
-          }
-
-          addTransaction(DUMMY_TRANSACTION_HASH);
-          txCount += 1;
-        }, 10);
-        intervalHandles.push(txInterval);
-
-        const receiptInterval = window.setInterval(() => {
-          if (receiptCount >= 10) {
-            clearInterval(receiptInterval);
-
-            const headTimeout = window.setTimeout(() => {
-              setLastHead(DUMMY_NEW_HEAD);
-              setPage(prev => prev + 1);
-
-              const restartTimeout = window.setTimeout(() => {
-                setTransactions([]);
-                setPage(prev => prev + 1);
-                startCycle();
-              }, 500);
-
-              timeoutHandles.push(restartTimeout);
-            }, 200);
-
-            timeoutHandles.push(headTimeout);
-            return;
-          }
-
-          validateTransaction(DUMMY_RECEIPT_HASH);
-          receiptCount += 1;
-        }, 40);
-        intervalHandles.push(receiptInterval);
-      };
-
-      startCycle();
-
-      return () => {
-        clearAll();
-      };
+      return;
     }
 
     const subscribe = (
@@ -260,23 +137,46 @@ export const TransactionMonitor = () => {
       params: [string],
       onResult: (payload: unknown) => void
     ) => {
-      const socket = new WebSocket(streamEndpoint);
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(streamEndpoint);
+      } catch (error) {
+        console.error(`Failed to create WebSocket for ${stream}`, error);
+        setStatus(prev => ({ ...prev, [stream]: "error" }));
+        return () => {};
+      }
+      let isActive = true;
 
       setStatus(prev => ({ ...prev, [stream]: "connecting" }));
 
-      socket.onopen = () => {
-        setStatus(prev => ({ ...prev, [stream]: "connected" }));
-        const requestId = requestIdRef.current++;
-
-        socket.send(
-          JSON.stringify({
+      const sendSubscribe = () => {
+        if (!isActive || socket.readyState !== WebSocket.OPEN) return;
+        try {
+          const requestId = requestIdRef.current++;
+          const payload = {
             jsonrpc: "2.0",
             id: requestId,
             method: "eth_subscribe",
             params,
-          })
-        );
+          };
+          socket.send(JSON.stringify(payload));
+        } catch (error) {
+          console.error(`Failed to subscribe to ${stream}`, error);
+          setStatus(prev => ({ ...prev, [stream]: "error" }));
+        }
       };
+
+      socket.addEventListener("open", () => {
+        setStatus(prev => ({ ...prev, [stream]: "connected" }));
+        sendSubscribe();
+      });
+
+      // In some environments the socket can already be open (or transition quickly)
+      // before the event listener is attached; try to subscribe immediately too.
+      if (socket.readyState === WebSocket.OPEN) {
+        setStatus(prev => ({ ...prev, [stream]: "connected" }));
+        sendSubscribe();
+      }
 
       socket.onmessage = (event) => {
         let payload: unknown;
@@ -300,46 +200,79 @@ export const TransactionMonitor = () => {
         }
       };
 
-      socket.onerror = () => {
+      socket.onerror = (event) => {
+        console.error(`WebSocket error on ${stream}`, event);
         setStatus(prev => ({ ...prev, [stream]: "error" }));
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        console.warn(
+          `WebSocket closed on ${stream}`,
+          { code: event.code, reason: event.reason, wasClean: event.wasClean }
+        );
         setStatus(prev => ({ ...prev, [stream]: "disconnected" }));
       };
 
-      return socket;
+      return () => {
+        isActive = false;
+        socket.close();
+      };
     };
 
-    const hashSocket = subscribe("included", ["tez_newIncludedTransactions"], (payload) => {
+    const unsubscribeIncluded = subscribe("included", ["tez_newIncludedTransactions"], (payload) => {
       const hash = parseTxHash(payload);
       if (hash) {
         addTransaction(hash);
       }
     });
 
-    const receiptSocket = subscribe("receipts", ["tez_newPreconfirmedReceipts"], (payload) => {
+    const unsubscribeReceipts = subscribe("receipts", ["tez_newPreconfirmedReceipts"], (payload) => {
       const hash = parseTxHash(payload);
       if (hash) {
         validateTransaction(hash);
       }
     });
 
-    const headSocket = subscribe("heads", ["newHeads"], (payload) => {
+    const unsubscribeHeads = subscribe("heads", ["newHeads"], (payload) => {
       if (typeof payload === "object" && payload !== null) {
         setLastHead(payload as Record<string, unknown>);
       } else {
         setLastHead({ raw: payload });
       }
 
-      setPage(prev => prev + 1);
+      const blockNumberHex =
+        typeof payload === "object" &&
+        payload !== null &&
+        "number" in payload &&
+        typeof (payload as { number?: unknown }).number === "string"
+          ? (payload as { number: string }).number
+          : undefined;
+
+      const blockId = blockNumberHex ? parseInt(blockNumberHex, 16) : undefined;
+      const txCount =
+        typeof payload === "object" &&
+        payload !== null &&
+        "transactions" in payload &&
+        Array.isArray((payload as { transactions?: unknown }).transactions)
+          ? ((payload as { transactions: unknown[] }).transactions.length ?? 0)
+          : 0;
+
+      setPage(prev => (blockId ? blockId : prev + 1));
       setTransactions(prev => prev.map(tx => ({ ...tx, shouldExit: true })));
+      setBlocks(prev => [
+        {
+          id: blockId ?? prev.length + 1,
+          isValidated: true,
+          transactionCount: txCount,
+        },
+        ...prev,
+      ]);
     });
 
     return () => {
-      hashSocket?.close();
-      receiptSocket?.close();
-      headSocket?.close();
+      unsubscribeIncluded?.();
+      unsubscribeReceipts?.();
+      unsubscribeHeads?.();
     };
   }, [streamEndpoint, addTransaction, validateTransaction]);
 
@@ -347,9 +280,9 @@ export const TransactionMonitor = () => {
     setTransactions(prev => prev.filter(tx => tx.id !== id));
   }, []);
 
-  const includedActive = status.included === "connected" || status.included === "demo";
-  const receiptsActive = status.receipts === "connected" || status.receipts === "demo";
-  const headsActive = status.heads === "connected" || status.heads === "demo";
+  const includedActive = status.included === "connected";
+  const receiptsActive = status.receipts === "connected";
+  const headsActive = status.heads === "connected";
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -382,18 +315,18 @@ export const TransactionMonitor = () => {
           </div>
           {!streamEndpoint && (
             <p className="text-sm text-destructive mt-3">
-              Using demo stream data. Configure <code className="font-mono">VITE_TEZOS_WS_URL</code> to connect to a live node.
+              Configure <code className="font-mono">VITE_TEZOS_WS_URL</code> with a JSON-RPC WebSocket endpoint to see live data.
             </p>
           )}
         </div>
 
-        <div className="flex gap-6">
+        <div className="grid gap-6 md:grid-cols-2">
           <BlockColumn blocks={blocks} />
           
-          <Card className="flex-1 p-6 bg-card/50 border-border">
+          <Card className="p-6 bg-card/50 border-border">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-foreground">
-                Active Block
+                Active Transactions
               </h2>
               <span className="text-sm text-muted-foreground">
                 {transactions.length} active transactions

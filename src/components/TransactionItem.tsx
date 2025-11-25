@@ -57,16 +57,6 @@ export const TransactionItem = ({
             {hash}
           </code>
         </div>
-        <span
-          className={cn(
-            "text-[10px] px-2 py-0.5 rounded-full border transition-all duration-500",
-            isValidated
-              ? "border-tx-validated text-tx-validated bg-tx-validated/15"
-              : "border-border text-muted-foreground bg-muted/40"
-          )}
-        >
-          {isValidated ? "VALIDATED" : "PENDING"}
-        </span>
       </div>
     </Card>
   );

@@ -13,10 +13,15 @@ interface BlockColumnProps {
 
 export const BlockColumn = ({ blocks }: BlockColumnProps) => {
   return (
-    <div className="w-32 flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-foreground mb-2">Blocks</h2>
-      <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-        {blocks.map((block, index) => (
+    <Card className="p-6 bg-card/50 border-border">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-foreground">Blocks</h2>
+        <span className="text-sm text-muted-foreground">
+          {blocks.length} blocks
+        </span>
+      </div>
+      <div className="space-y-2 max-h-[360px] overflow-y-auto pr-2">
+        {blocks.map((block) => (
           <Card
             key={block.id}
             className={cn(
@@ -43,6 +48,6 @@ export const BlockColumn = ({ blocks }: BlockColumnProps) => {
           </Card>
         ))}
       </div>
-    </div>
+    </Card>
   );
 };
