@@ -49,6 +49,7 @@ export const TransactionMonitor = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const [durations, setDurations] = useState<number[]>([]);
   const [status, setStatus] = useState<Record<StreamKey, StreamStatus>>({
     included: "disconnected",
     receipts: "disconnected",
@@ -113,6 +114,10 @@ export const TransactionMonitor = () => {
       if (index === -1) {
         return prev;
       }
+
+      const now = Date.now();
+      const duration = now - prev[index].timestamp;
+      setDurations(d => [...d, duration]);
 
       const updated = [...prev];
       updated[index] = { ...updated[index], isValidated: true };
@@ -313,6 +318,10 @@ export const TransactionMonitor = () => {
   const includedActive = status.included === "connected";
   const receiptsActive = status.receipts === "connected";
   const headsActive = status.heads === "connected";
+  const averageDuration =
+    durations.length > 0
+      ? durations.reduce((sum, value) => sum + value, 0) / durations.length
+      : null;
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -348,6 +357,17 @@ export const TransactionMonitor = () => {
               Configure <code className="font-mono">VITE_TEZOS_WS_URL</code> with a JSON-RPC WebSocket endpoint to see live data.
             </p>
           )}
+        </div>
+
+        <div className="mb-4">
+          <Card className="p-4 bg-card/60 border-border">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>Average execution time</span>
+              <span className="font-mono text-foreground">
+                {averageDuration !== null ? `${averageDuration.toFixed(0)} ms` : "N/A"}
+              </span>
+            </div>
+          </Card>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">

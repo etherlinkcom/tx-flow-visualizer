@@ -86,7 +86,7 @@ export default {
         },
         "slide-in": {
           "0%": {
-            transform: "translateX(-100%)",
+            transform: "translateX(100%)",
             opacity: "0",
           },
           "100%": {
@@ -100,7 +100,7 @@ export default {
             opacity: "1",
           },
           "100%": {
-            transform: "translateX(150%)",
+            transform: "translateX(-150%)",
             opacity: "0",
           },
         },
