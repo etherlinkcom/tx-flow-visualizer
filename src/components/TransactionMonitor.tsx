@@ -57,6 +57,43 @@ export const TransactionMonitor = () => {
   const [lastHead, setLastHead] = useState<Record<string, unknown> | null>(null);
   const [page, setPage] = useState(1);
 
+  const upsertBlock = useCallback((incoming: Block | ((prev: Block[]) => Block)) => {
+    setBlocks(prev => {
+      const block =
+        typeof incoming === "function" ? (incoming as (prev: Block[]) => Block)(prev) : incoming;
+
+      const existingIndex = prev.findIndex(b => b.id === block.id);
+      if (existingIndex !== -1) {
+        const existing = prev[existingIndex];
+        const merged: Block = {
+          ...existing,
+          ...block,
+          // Never downgrade validation state
+          isValidated: existing.isValidated || block.isValidated,
+        };
+        // Avoid state churn if nothing really changed
+        if (
+          merged.isValidated === existing.isValidated &&
+          merged.transactionCount === existing.transactionCount
+        ) {
+          return prev;
+        }
+        const next = [...prev];
+        next[existingIndex] = merged;
+        return next;
+      }
+
+      // Insert in descending order without reshuffling existing blocks unnecessarily
+      const insertIndex = prev.findIndex(b => b.id < block.id);
+      if (insertIndex === -1) {
+        return [...prev, block];
+      }
+      const next = [...prev];
+      next.splice(insertIndex, 0, block);
+      return next;
+    });
+  }, []);
+
   const addTransaction = useCallback((hash: string) => {
     setTransactions(prev => [
       ...prev,
@@ -89,25 +126,21 @@ export const TransactionMonitor = () => {
       transactions.some(tx => !tx.shouldExit)
     ) {
       setTransactions(prev => prev.map(tx => ({ ...tx, shouldExit: true })));
-      
-      // Add validated block
-      setBlocks(prev => {
-        const newBlock: Block = {
-          id: page,
-          isValidated: false,
-          transactionCount: transactions.length,
-        };
-        return [...prev, newBlock];
-      });
-      
-      // Validate block after squeeze animation
-      setTimeout(() => {
-        setBlocks(prev => 
-          prev.map(b => b.id === page ? { ...b, isValidated: true } : b)
-        );
-      }, 700);
     }
-  }, [transactions, page]);
+  }, [transactions]);
+
+  // Clean up exited transactions once their animation is done
+  useEffect(() => {
+    const exiting = transactions.some(tx => tx.shouldExit);
+    if (!exiting) return;
+
+    const timer = setTimeout(() => {
+      setTransactions(prev => prev.filter(tx => !tx.shouldExit));
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [transactions]);
+  console.log(blocks);
 
   // Auto-scroll when last transaction slides in
   useEffect(() => {
@@ -259,14 +292,11 @@ export const TransactionMonitor = () => {
 
       setPage(prev => (blockId ? blockId : prev + 1));
       setTransactions(prev => prev.map(tx => ({ ...tx, shouldExit: true })));
-      setBlocks(prev => [
-        {
-          id: blockId ?? prev.length + 1,
-          isValidated: true,
-          transactionCount: txCount,
-        },
-        ...prev,
-      ]);
+      upsertBlock(prevBlocks => ({
+        id: blockId ?? prevBlocks.length + 1,
+        isValidated: true,
+        transactionCount: txCount,
+      }));
     });
 
     return () => {
@@ -274,7 +304,7 @@ export const TransactionMonitor = () => {
       unsubscribeReceipts?.();
       unsubscribeHeads?.();
     };
-  }, [streamEndpoint, addTransaction, validateTransaction]);
+  }, [streamEndpoint, addTransaction, validateTransaction, upsertBlock]);
 
   const handleAnimationComplete = useCallback((id: string) => {
     setTransactions(prev => prev.filter(tx => tx.id !== id));
