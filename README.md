@@ -1,73 +1,90 @@
-# Welcome to your Lovable project
+# TX Flow Visualizer
 
-## Project info
+Real-time Etherlink transaction flow monitor – pre-confirmation tracking visualised in the browser.
 
-**URL**: https://lovable.dev/projects/b1abbc61-7292-4ee3-82e5-fff6c857d2bd
+## Architecture
 
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/b1abbc61-7292-4ee3-82e5-fff6c857d2bd) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+Browser (React/Vite)
+        │  ws://backend-host:3001
+        ▼
+Backend WebSocket Proxy  (Node.js / backend/)
+        │  ws://private-evm-node/ws   ← never exposed to the browser
+        ▼
+Private EVM Node
 ```
 
-**Edit a file directly in GitHub**
+The **backend proxy** keeps the EVM node URL completely server-side.  The browser only ever connects to the proxy, so the private endpoint is never visible in network traffic or JavaScript bundles.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Quick start (development)
 
-**Use GitHub Codespaces**
+### 1. Backend
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```sh
+cd backend
+cp .env.example .env        # fill in TEZOS_WS_URL with the real EVM node URL
+npm install
+npm run dev                 # starts proxy on ws://localhost:3001
+```
 
-## What technologies are used for this project?
+### 2. Frontend
 
-This project is built with:
+```sh
+# in the repo root
+cp .env.example .env        # VITE_WS_BACKEND_URL=ws://localhost:3001 (default)
+npm install
+npm run dev                 # starts Vite on http://localhost:8080
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Docker Compose (recommended for production)
 
-## How can I deploy this project?
+```sh
+# create a .env file at the repo root with:
+#   TEZOS_WS_URL=wss://your-private-evm-node/ws
+#   VITE_WS_BACKEND_URL=ws://your-public-host:3001
 
-Simply open [Lovable](https://lovable.dev/projects/b1abbc61-7292-4ee3-82e5-fff6c857d2bd) and click on Share -> Publish.
+docker compose up --build
+```
 
-## Can I connect a custom domain to my Lovable project?
+The frontend is served on **port 8080** and the proxy on **port 3001**.
 
-Yes, you can!
+## Environment variables
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### Frontend (`.env` in repo root)
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+| Variable | Description |
+|---|---|
+| `VITE_WS_BACKEND_URL` | WebSocket URL of the **backend proxy** (e.g. `ws://localhost:3001`) |
+
+### Backend (`backend/.env`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `TEZOS_WS_URL` | *(required)* | Private EVM node WebSocket URL, e.g. `wss://node/ws` |
+| `PORT` | `3001` | Port the proxy server listens on |
+| `ALLOWED_ORIGINS` | *(all)* | Comma-separated browser origins to whitelist, e.g. `https://stream.proofofspeed.xyz` |
+
+## Technology stack
+
+- **Frontend:** Vite · React 18 · TypeScript · shadcn/ui · Tailwind CSS
+- **Backend:** Node.js · TypeScript · [ws](https://github.com/websockets/ws)
+
+## Scripts
+
+### Frontend
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Vite dev server with HMR on port 8080 |
+| `npm run build` | Production build → `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run lint` | ESLint |
+
+### Backend
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Dev server with auto-reload (`ts-node-dev`) |
+| `npm run build` | Compile TypeScript → `dist/` |
+| `npm start` | Run the compiled server |
+

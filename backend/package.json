@@ -1,0 +1,22 @@
+{
+  "name": "tx-flow-visualizer-backend",
+  "version": "1.0.0",
+  "description": "WebSocket proxy backend for TX Flow Visualizer – keeps the EVM node URL server-side",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "@types/ws": "^8.5.14",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.3"
+  }
+}

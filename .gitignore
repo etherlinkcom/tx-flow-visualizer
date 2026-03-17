@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 .env
+
+# Backend build output
+backend/dist
+backend/node_modules

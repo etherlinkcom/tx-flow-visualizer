@@ -44,7 +44,7 @@ const parseTxHash = (payload: unknown): string | null => {
 };
 
 export const TransactionMonitor = () => {
-  const streamEndpoint = import.meta.env.VITE_TEZOS_WS_URL;
+  const streamEndpoint = import.meta.env.VITE_WS_BACKEND_URL;
   const requestIdRef = useRef(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -354,7 +354,7 @@ export const TransactionMonitor = () => {
           </div>
           {!streamEndpoint && (
             <p className="text-sm text-destructive mt-3">
-              Configure <code className="font-mono">VITE_TEZOS_WS_URL</code> with a JSON-RPC WebSocket endpoint to see live data.
+              Configure <code className="font-mono">VITE_WS_BACKEND_URL</code> with the WebSocket URL of the backend proxy server.
             </p>
           )}
         </div>
