@@ -23,13 +23,25 @@ import { WebSocket, WebSocketServer } from "ws";
 
 // ── configuration ──────────────────────────────────────────────────────────
 
-const PORT = Number(process.env.PORT ?? 3001);
+const _rawPort = Number(process.env.PORT ?? 3001);
+const PORT = Number.isInteger(_rawPort) && _rawPort > 0 && _rawPort <= 65535
+  ? _rawPort
+  : (() => {
+      console.warn(`[broadcast] Invalid PORT value; defaulting to 3001`);
+      return 3001;
+    })();
 
 /** The private EVM WebSocket endpoint – never sent to the browser. */
 const EVM_WS_URL = process.env.TEZOS_WS_URL;
 
 /** How long to wait before retrying a dropped upstream connection (ms). */
-const RECONNECT_DELAY_MS = Number(process.env.RECONNECT_DELAY_MS ?? 3000);
+const _rawDelay = Number(process.env.RECONNECT_DELAY_MS ?? 3000);
+const RECONNECT_DELAY_MS = Number.isFinite(_rawDelay) && _rawDelay >= 0
+  ? _rawDelay
+  : (() => {
+      console.warn(`[broadcast] Invalid RECONNECT_DELAY_MS value; defaulting to 3000`);
+      return 3000;
+    })();
 
 /** Optional comma-separated list of allowed frontend origins, e.g.
  *  "http://localhost:8080,https://stream.proofofspeed.xyz"
@@ -46,6 +58,38 @@ if (!EVM_WS_URL) {
       "Copy backend/.env.example to backend/.env and fill in the value."
   );
   process.exit(1);
+}
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the URL with any user-info (credentials) stripped out so it is safe
+ * to print in logs.  Falls back to a placeholder if the URL cannot be parsed.
+ */
+function redactUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.toString();
+  } catch {
+    return "(invalid URL)";
+  }
+}
+
+/** Shape of the upstream subscribe acknowledgement we expect from the EVM node. */
+interface JsonRpcSubscribeAck {
+  id: number;
+  result: string;
+}
+
+function isSubscribeAck(msg: unknown): msg is JsonRpcSubscribeAck {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    (msg as Record<string, unknown>).id === 1 &&
+    typeof (msg as Record<string, unknown>).result === "string"
+  );
 }
 
 // ── stream registry ────────────────────────────────────────────────────────
@@ -73,6 +117,15 @@ const upstreamStatus = new Map<StreamName, "connecting" | "connected" | "disconn
   STREAM_NAMES.map((name) => [name, "connecting"])
 );
 
+/**
+ * The real subscription ID returned by the EVM node for each stream.
+ * Stored when the upstream subscribe ack arrives so we can hand the same ID
+ * to every browser client that subscribes to that stream.
+ */
+const upstreamSubIds = new Map<StreamName, string | null>(
+  STREAM_NAMES.map((name) => [name, null])
+);
+
 // ── HTTP server (health-check) ─────────────────────────────────────────────
 
 const httpServer = http.createServer((_req, res) => {
@@ -90,7 +143,9 @@ const wss = new WebSocketServer({ server: httpServer });
 
 wss.on("connection", (clientWs: WebSocket, req: http.IncomingMessage) => {
   // ── origin check ─────────────────────────────────────────────────────────
-  const origin = req.headers["origin"] ?? "";
+  // req.headers["origin"] can be string | string[] | undefined; normalise to string.
+  const rawOrigin = req.headers["origin"];
+  const origin = Array.isArray(rawOrigin) ? rawOrigin[0] ?? "" : rawOrigin ?? "";
   if (ALLOWED_ORIGINS && !ALLOWED_ORIGINS.has(origin)) {
     console.warn(`[broadcast] Rejected connection from disallowed origin: ${origin}`);
     clientWs.close(1008, "Origin not allowed");
@@ -138,17 +193,31 @@ wss.on("connection", (clientWs: WebSocket, req: http.IncomingMessage) => {
     }
 
     const stream = streamName as StreamName;
+
+    // If the upstream subscription ID is not yet available (e.g. the EVM node
+    // is still connecting after a reconnect), reject the subscription so the
+    // client gets a clear error rather than a mismatched ID.
+    const subId = upstreamSubIds.get(stream);
+    if (subId === null) {
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: requestId,
+            error: { code: -32603, message: `Stream ${stream} is not yet connected; please retry` },
+          })
+        );
+      }
+      return;
+    }
+
     subscribers.get(stream)!.add(clientWs);
 
-    // Acknowledge the subscription with a stable per-client ID.
-    // The frontend doesn't use subscription IDs, but sending a valid response
-    // keeps the JSON-RPC contract intact.
-    const fakeSubId =
-      "0x" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
-
+    // Return the actual upstream subscription ID so the client's subscription
+    // ID matches the `params.subscription` field in forwarded notifications.
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.send(
-        JSON.stringify({ jsonrpc: "2.0", id: requestId, result: fakeSubId })
+        JSON.stringify({ jsonrpc: "2.0", id: requestId, result: subId })
       );
     }
 
@@ -222,7 +291,26 @@ function connectUpstream(streamName: StreamName): () => void {
     });
 
     socket.on("message", (data, isBinary) => {
-      // Broadcast to every client subscribed to this stream
+      // Try to parse to intercept the upstream subscribe acknowledgement
+      // (id: 1) so we can record the real subscription ID and avoid
+      // forwarding that internal bookkeeping message to browser clients.
+      if (!isBinary) {
+        try {
+          const parsed: unknown = JSON.parse(data.toString());
+          if (isSubscribeAck(parsed)) {
+            upstreamSubIds.set(streamName, parsed.result);
+            console.log(
+              `[broadcast] Upstream sub ID for ${streamName}: ${parsed.result}`
+            );
+            return; // Don't forward the subscribe ack to browser clients
+          }
+        } catch {
+          // Non-JSON text frame – fall through and broadcast
+        }
+      }
+
+      // Broadcast all other messages (eth_subscription notifications) to
+      // every client subscribed to this stream.
       const clients = subscribers.get(streamName)!;
       for (const clientWs of clients) {
         if (clientWs.readyState === WebSocket.OPEN) {
@@ -237,6 +325,7 @@ function connectUpstream(streamName: StreamName): () => void {
 
     socket.on("close", (code) => {
       upstreamStatus.set(streamName, "disconnected");
+      upstreamSubIds.set(streamName, null); // will be repopulated on reconnect
       console.warn(
         `[broadcast] Upstream closed for ${streamName} (code: ${code}). ` +
           `Reconnecting in ${RECONNECT_DELAY_MS} ms…`
@@ -268,7 +357,7 @@ const teardowns = STREAM_NAMES.map(connectUpstream);
 
 httpServer.listen(PORT, () => {
   console.log(`[broadcast] WebSocket broadcast server listening on ws://0.0.0.0:${PORT}`);
-  console.log(`[broadcast] Upstream EVM node: ${EVM_WS_URL}`);
+  console.log(`[broadcast] Upstream EVM node: ${redactUrl(EVM_WS_URL as string)}`);
   console.log(`[broadcast] Streams: ${STREAM_NAMES.join(", ")}`);
   if (ALLOWED_ORIGINS) {
     console.log(`[broadcast] Allowed origins: ${[...ALLOWED_ORIGINS].join(", ")}`);
