@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+server-dist
 *.local
 
 # Editor directories and files
@@ -25,6 +26,6 @@ dist-ssr
 
 .env
 
-# Backend build output
+# Legacy – backend now merged into root
 backend/dist
 backend/node_modules

@@ -44,7 +44,13 @@ const parseTxHash = (payload: unknown): string | null => {
 };
 
 export const TransactionMonitor = () => {
-  const streamEndpoint = import.meta.env.VITE_WS_BACKEND_URL;
+  // In production the Node server serves both static files and WebSocket on
+  // the same host/port, so we derive the WS URL from window.location.
+  // In development an explicit VITE_WS_BACKEND_URL can override this.
+  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const streamEndpoint =
+    import.meta.env.VITE_WS_BACKEND_URL ??
+    `${wsProtocol}//${window.location.host}`;
   const requestIdRef = useRef(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -162,11 +168,6 @@ export const TransactionMonitor = () => {
 
   useEffect(() => {
     if (!streamEndpoint) {
-      setStatus({ included: "error", receipts: "error", heads: "error" });
-      setPage(1);
-      setBlocks([]);
-      setLastHead(null);
-      setTransactions([]);
       return;
     }
 
@@ -352,11 +353,6 @@ export const TransactionMonitor = () => {
               Block stream: {status.heads}
             </Badge>
           </div>
-          {!streamEndpoint && (
-            <p className="text-sm text-destructive mt-3">
-              Configure <code className="font-mono">VITE_WS_BACKEND_URL</code> with the WebSocket URL of the backend proxy server.
-            </p>
-          )}
         </div>
 
         <div className="mb-4">

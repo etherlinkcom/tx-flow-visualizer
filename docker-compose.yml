@@ -1,40 +1,25 @@
 version: "3.9"
 
 services:
-  # ── Backend WebSocket proxy ──────────────────────────────────────────────
-  # Connects to the private EVM node and exposes a public WebSocket endpoint
-  # for the frontend.  The EVM node URL never leaves this container.
-  backend:
+  # Single container: serves the React frontend and the WebSocket fan-out
+  # proxy from one Node.js process.  The private EVM node URL is never
+  # exposed to browsers.
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "8080:8080"
     environment:
-      PORT: 3001
+      PORT: 8080
       # Set TEZOS_WS_URL in a .env file or via your deployment platform.
       # Do NOT commit the real value.
       TEZOS_WS_URL: ${TEZOS_WS_URL}
       # Optional: restrict which browser origins may connect.
       # ALLOWED_ORIGINS: "https://stream.proofofspeed.xyz"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3001/"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 15s
       timeout: 5s
       retries: 3
-
-  # ── Frontend (Vite static build served by nginx) ─────────────────────────
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        # Points the browser at the backend proxy (same host, different port).
-        VITE_WS_BACKEND_URL: ${VITE_WS_BACKEND_URL:-ws://localhost:3001}
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    depends_on:
-      backend:
-        condition: service_healthy

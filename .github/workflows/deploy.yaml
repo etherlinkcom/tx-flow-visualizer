@@ -1,0 +1,93 @@
+# Deploy to GCP Cloud Run
+#
+# Required GitHub secrets:
+#   GCP_PROJECT_ID        – your GCP project ID (e.g. my-project-123)
+#   GCP_SA_KEY            – base64-encoded JSON key of a service account that
+#                           has the following roles:
+#                             • roles/run.admin
+#                             • roles/iam.serviceAccountUser
+#                             • roles/artifactregistry.writer (or storage.admin
+#                               if using GCR)
+#   TEZOS_WS_URL          – private EVM WebSocket URL (wss://...)
+#
+# Optional GitHub secrets:
+#   GCP_REGION            – Cloud Run region (default: us-central1)
+#   GCP_SERVICE_NAME      – Cloud Run service name (default: tx-flow-visualizer)
+#   ALLOWED_ORIGINS       – comma-separated allowed browser origins
+#   RECONNECT_DELAY_MS    – upstream reconnect delay in milliseconds
+
+name: Deploy to GCP Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  # Override these in your repository variables (Settings → Variables) or
+  # edit the values below directly.
+  REGION: ${{ vars.GCP_REGION != '' && vars.GCP_REGION || 'us-central1' }}
+  SERVICE_NAME: ${{ vars.GCP_SERVICE_NAME != '' && vars.GCP_SERVICE_NAME || 'tx-flow-visualizer' }}
+  IMAGE: gcr.io/${{ secrets.GCP_PROJECT_ID }}/tx-flow-visualizer
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker to use GCR
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --tag "$IMAGE:${{ github.sha }}" \
+            --tag "$IMAGE:latest" \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
+      - name: Deploy to Cloud Run
+        run: |
+          # Build the --set-env-vars string; only include optional vars when set
+          ENV_VARS="TEZOS_WS_URL=${{ secrets.TEZOS_WS_URL }}"
+          if [ -n "${{ secrets.ALLOWED_ORIGINS }}" ]; then
+            ENV_VARS="${ENV_VARS},ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}"
+          fi
+          if [ -n "${{ secrets.RECONNECT_DELAY_MS }}" ]; then
+            ENV_VARS="${ENV_VARS},RECONNECT_DELAY_MS=${{ secrets.RECONNECT_DELAY_MS }}"
+          fi
+
+          gcloud run deploy "$SERVICE_NAME" \
+            --image "$IMAGE:${{ github.sha }}" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080 \
+            --set-env-vars "$ENV_VARS" \
+            --quiet
+
+      - name: Show Cloud Run service URL
+        run: |
+          gcloud run services describe "$SERVICE_NAME" \
+            --region "$REGION" \
+            --format "value(status.url)"

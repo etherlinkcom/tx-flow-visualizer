@@ -1,27 +1,43 @@
-# ── Build stage ──────────────────────────────────────────────────────────────
+# ── Build stage ───────────────────────────────────────────────────────────────
+# Compiles both the React frontend (Vite) and the Node.js server (TypeScript)
+# in a single stage so that all build tools share one node_modules install.
 FROM node:20-alpine AS builder
 
 WORKDIR /app
-
-# Accept the backend URL as a build-time argument so it gets baked into the
-# Vite bundle.  At runtime the browser will connect to this URL.
-ARG VITE_WS_BACKEND_URL=ws://localhost:3001
-ENV VITE_WS_BACKEND_URL=${VITE_WS_BACKEND_URL}
 
 COPY package*.json ./
 RUN npm ci
 
 COPY . .
+
+# Build the React frontend into dist/
 RUN npm run build
 
-# ── Runtime stage (nginx) ─────────────────────────────────────────────────────
-FROM nginx:1.27-alpine AS runtime
+# Compile the TypeScript server into server-dist/
+RUN npm run build:server
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+# ── Production stage ──────────────────────────────────────────────────────────
+# Lean runtime image: only production dependencies + compiled artifacts.
+FROM node:20-alpine AS runtime
 
-# Single-page app: route all requests to index.html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
 
-EXPOSE 80
+# Copy manifests and install only production dependencies
+COPY package*.json ./
+RUN npm ci --omit=dev
 
-CMD ["nginx", "-g", "daemon off;"]
+# Compiled frontend assets
+COPY --from=builder /app/dist ./dist
+
+# Compiled server
+COPY --from=builder /app/server-dist ./server-dist
+
+# Cloud Run expects the container to listen on PORT (default 8080)
+ENV PORT=8080
+EXPOSE 8080
+
+# Non-root user for defence-in-depth
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+CMD ["node", "server-dist/index.js"]

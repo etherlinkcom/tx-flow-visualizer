@@ -5,85 +5,77 @@ Real-time Etherlink transaction flow monitor – pre-confirmation tracking visua
 ## Architecture
 
 ```
-Browser 1 ──┐                                  ┌── tez_newIncludedTransactions ──► EVM node
-Browser 2 ──┤── ws://backend:3001 ──► backend ──┼── tez_newPreconfirmedReceipts ──► EVM node
-Browser N ──┘   (fan-out broadcast)             └── newHeads ──────────────────► EVM node
+Browser 1 ──┐                              ┌── tez_newIncludedTransactions ──► EVM node
+Browser 2 ──┤── ws://host:8080 ──► server ──┼── tez_newPreconfirmedReceipts ──► EVM node
+Browser N ──┘   (fan-out + static files)   └── newHeads ──────────────────► EVM node
 ```
 
-The **backend broadcast server** maintains exactly **3 persistent WebSocket connections** to the EVM node – one per subscription stream – regardless of how many browser clients are connected.  EVM events are fanned out to every subscribed browser client.  This means N clients cause **3 upstream connections total** instead of 3×N.
+A single Node.js process:
+- Serves the compiled React frontend (static files)
+- Maintains exactly **3 persistent WebSocket connections** to the EVM node (one per subscription stream), regardless of how many browser clients are connected
+- Fans out EVM events to every subscribed browser client → N clients = **3 upstream connections total** instead of 3×N
 
-The EVM node URL (`TEZOS_WS_URL`) is a server-side environment variable and is never sent to the browser.  No changes to the frontend protocol are needed – the existing `eth_subscribe` / `eth_subscription` JSON-RPC flow is fully preserved.
+The EVM node URL (`TEZOS_WS_URL`) is a server-side environment variable and is **never** sent to browsers.
 
 ## Quick start (development)
 
-### 1. Backend
-
 ```sh
-cd backend
 cp .env.example .env        # fill in TEZOS_WS_URL with the real EVM node URL
 npm install
-npm run dev                 # starts broadcast server on ws://localhost:3001
+
+# Terminal 1 – Node server (fan-out + WS)
+npm run server:dev          # starts on http://localhost:3001
+
+# Terminal 2 – Vite dev server with HMR
+npm run dev                 # starts on http://localhost:8080
 ```
 
-### 2. Frontend
+## Docker (single container)
 
 ```sh
-# in the repo root
-cp .env.example .env        # VITE_WS_BACKEND_URL=ws://localhost:3001 (default)
-npm install
-npm run dev                 # starts Vite on http://localhost:8080
-```
-
-## Docker Compose (recommended for production)
-
-```sh
-# create a .env file at the repo root with:
+# Create a .env file at the repo root:
 #   TEZOS_WS_URL=wss://your-private-evm-node/ws
-#   VITE_WS_BACKEND_URL=ws://your-public-host:3001
+#   ALLOWED_ORIGINS=https://your-domain.com   (optional)
 
-docker compose up --build
+docker compose up --build   # app available on http://localhost:8080
 ```
 
-The frontend is served on **port 8080** and the proxy on **port 3001**.
+## GCP Cloud Run deployment
+
+Push to `main` to trigger the GitHub Actions workflow (`.github/workflows/deploy.yaml`).
+
+Required GitHub secrets:
+
+| Secret | Description |
+|---|---|
+| `GCP_PROJECT_ID` | GCP project ID |
+| `GCP_SA_KEY` | Base64-encoded service account JSON key (roles: `run.admin`, `iam.serviceAccountUser`, `artifactregistry.writer`) |
+| `TEZOS_WS_URL` | Private EVM node WebSocket URL |
+
+Optional secrets: `ALLOWED_ORIGINS`, `RECONNECT_DELAY_MS`, `GCP_REGION`, `GCP_SERVICE_NAME`.
 
 ## Environment variables
 
-### Frontend (`.env` in repo root)
-
-| Variable | Description |
-|---|---|
-| `VITE_WS_BACKEND_URL` | WebSocket URL of the **backend proxy** (e.g. `ws://localhost:3001`) |
-
-### Backend (`backend/.env`)
-
 | Variable | Default | Description |
 |---|---|---|
-| `TEZOS_WS_URL` | *(required)* | Private EVM node WebSocket URL, e.g. `wss://node/ws` |
-| `PORT` | `3001` | Port the broadcast server listens on |
-| `RECONNECT_DELAY_MS` | `3000` | Delay before retrying a dropped upstream connection |
-| `ALLOWED_ORIGINS` | *(all)* | Comma-separated browser origins to whitelist, e.g. `https://stream.proofofspeed.xyz` |
+| `TEZOS_WS_URL` | *(required)* | Private EVM node WebSocket URL |
+| `PORT` | `8080` | Port the server listens on |
+| `RECONNECT_DELAY_MS` | `3000` | Delay (ms) before retrying a dropped upstream connection |
+| `ALLOWED_ORIGINS` | *(all)* | Comma-separated allowed browser origins |
 
 ## Technology stack
 
 - **Frontend:** Vite · React 18 · TypeScript · shadcn/ui · Tailwind CSS
-- **Backend:** Node.js · TypeScript · [ws](https://github.com/websockets/ws)
+- **Server:** Node.js · TypeScript · [ws](https://github.com/websockets/ws)
 
 ## Scripts
-
-### Frontend
 
 | Command | Description |
 |---|---|
 | `npm run dev` | Vite dev server with HMR on port 8080 |
-| `npm run build` | Production build → `dist/` |
-| `npm run preview` | Serve the production build locally |
+| `npm run server:dev` | Node server with auto-reload on port 3001 |
+| `npm run build` | Compile React frontend → `dist/` |
+| `npm run build:server` | Compile Node server → `server-dist/` |
+| `npm start` | Run the compiled server (serves both static files and WS) |
 | `npm run lint` | ESLint |
-
-### Backend
-
-| Command | Description |
-|---|---|
-| `npm run dev` | Dev server with auto-reload (`ts-node-dev`) |
-| `npm run build` | Compile TypeScript → `dist/` |
-| `npm start` | Run the compiled server |
 
