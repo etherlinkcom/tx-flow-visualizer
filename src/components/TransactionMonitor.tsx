@@ -61,7 +61,6 @@ export const TransactionMonitor = () => {
     receipts: "disconnected",
     heads: "disconnected",
   });
-  const [lastHead, setLastHead] = useState<Record<string, unknown> | null>(null);
   const [page, setPage] = useState(1);
 
   const upsertBlock = useCallback((incoming: Block | ((prev: Block[]) => Block)) => {
@@ -130,6 +129,7 @@ export const TransactionMonitor = () => {
       return updated;
     });
   }, []);
+
   useEffect(() => {
     if (
       transactions.length > 0 &&
@@ -151,8 +151,6 @@ export const TransactionMonitor = () => {
 
     return () => clearTimeout(timer);
   }, [transactions]);
-  console.log(blocks);
-
   // Auto-scroll when last transaction slides in
   useEffect(() => {
     if (transactions.length > 0 && scrollRef.current) {
@@ -273,12 +271,6 @@ export const TransactionMonitor = () => {
     });
 
     const unsubscribeHeads = subscribe("heads", ["newHeads"], (payload) => {
-      if (typeof payload === "object" && payload !== null) {
-        setLastHead(payload as Record<string, unknown>);
-      } else {
-        setLastHead({ raw: payload });
-      }
-
       const blockNumberHex =
         typeof payload === "object" &&
         payload !== null &&
@@ -323,6 +315,7 @@ export const TransactionMonitor = () => {
     durations.length > 0
       ? durations.reduce((sum, value) => sum + value, 0) / durations.length
       : null;
+
 
   return (
     <div className="min-h-screen bg-background p-6">
