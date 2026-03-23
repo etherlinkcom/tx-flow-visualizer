@@ -23,12 +23,14 @@ The EVM node URL (`TEZOS_WS_URL`) is a server-side environment variable and is *
 cp .env.example .env        # fill in TEZOS_WS_URL with the real EVM node URL
 npm install
 
-# Terminal 1 – Node server (fan-out + WS)
-npm run server:dev          # starts on http://localhost:3001
+# Terminal 1 – Node fan-out server (listens on port 3001; PORT is set by npm script)
+npm run server:dev
 
-# Terminal 2 – Vite dev server with HMR
-npm run dev                 # starts on http://localhost:8080
+# Terminal 2 – Vite dev server with HMR (http://localhost:8080)
+npm run dev
 ```
+
+Open the app at **http://localhost:8080**. The UI opens WebSockets to **`/ws` on the Vite origin**, and Vite proxies those upgrades to the Node server on port **3001**. You do not need `VITE_WS_BACKEND_URL` unless you use a custom setup.
 
 ## Docker (single container)
 
@@ -42,17 +44,27 @@ docker compose up --build   # app available on http://localhost:8080
 
 ## GCP Cloud Run deployment
 
-Push to `main` to trigger the GitHub Actions workflow (`.github/workflows/deploy.yaml`).
+Push to **`main`** to trigger the GitHub Actions workflow (`.github/workflows/deploy.yaml`).
 
-Required GitHub secrets:
+Required GitHub **secrets**:
 
 | Secret | Description |
 |---|---|
 | `GCP_PROJECT_ID` | GCP project ID |
-| `GCP_SA_KEY` | Base64-encoded service account JSON key (roles: `run.admin`, `iam.serviceAccountUser`, `artifactregistry.writer`) |
+| `GCP_SA_KEY` | **Full JSON** of a service account key (paste the entire file contents into the secret). The `google-github-actions/auth` action expects raw JSON for `credentials_json`, not a base64 string. |
 | `TEZOS_WS_URL` | Private EVM node WebSocket URL |
 
-Optional secrets: `ALLOWED_ORIGINS`, `RECONNECT_DELAY_MS`, `GCP_REGION`, `GCP_SERVICE_NAME`.
+Optional secrets: `ALLOWED_ORIGINS`, `RECONNECT_DELAY_MS`. Optional **repository variables**: `GCP_REGION`, `GCP_SERVICE_NAME`.
+
+**IAM roles** for that service account (minimum to match this workflow):
+
+| Role | Why |
+|---|---|
+| `roles/run.admin` | Deploy and update the Cloud Run service |
+| `roles/iam.serviceAccountUser` | Act as the Cloud Run runtime service account when deploying |
+| `roles/storage.admin` | Push images to **GCR** (`gcr.io/...`) — or use Artifact Registry and grant `roles/artifactregistry.writer` instead (then change the image URL in the workflow) |
+
+The workflow deploys with **`--timeout 3600`** (seconds) so long-lived browser WebSockets are less likely to be cut off at Cloud Run’s default 300s limit.
 
 ## Environment variables
 

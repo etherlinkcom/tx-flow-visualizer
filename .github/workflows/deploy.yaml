@@ -2,13 +2,15 @@
 #
 # Required GitHub secrets:
 #   GCP_PROJECT_ID        – your GCP project ID (e.g. my-project-123)
-#   GCP_SA_KEY            – base64-encoded JSON key of a service account that
-#                           has the following roles:
-#                             • roles/run.admin
-#                             • roles/iam.serviceAccountUser
-#                             • roles/artifactregistry.writer (or storage.admin
-#                               if using GCR)
+#   GCP_SA_KEY            – full JSON body of a service account key (paste the
+#                           entire *.json file contents into the secret — not base64).
+#                           google-github-actions/auth expects credentials_json.
 #   TEZOS_WS_URL          – private EVM WebSocket URL (wss://...)
+#
+# Service account roles (see README for details):
+#   • roles/run.admin
+#   • roles/iam.serviceAccountUser
+#   • roles/storage.admin (GCR) or roles/artifactregistry.writer (Artifact Registry)
 #
 # Optional GitHub secrets:
 #   GCP_REGION            – Cloud Run region (default: us-central1)
@@ -83,6 +85,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 8080 \
+            --timeout 3600 \
             --set-env-vars "$ENV_VARS" \
             --quiet
 

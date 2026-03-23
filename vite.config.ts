@@ -9,12 +9,13 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     proxy: {
-      // In development, forward WebSocket upgrade requests to the Node server
-      // running on port 3001 (npm run server:dev).
-      // Production: WS is served by the same process as the static files.
+      // Dev only: browser connects to ws://<vite-host>/ws; upgrade is forwarded
+      // to the fan-out server (npm run server:dev → PORT 3001). Production uses
+      // the same host with no /ws path.
       "/ws": {
-        target: "ws://localhost:3001",
+        target: "http://localhost:3001",
         ws: true,
+        changeOrigin: true,
         rewriteWsOrigin: true,
       },
     },

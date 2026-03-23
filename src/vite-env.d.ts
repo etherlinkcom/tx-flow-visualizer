@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_TEZOS_WS_URL?: string;
+  /** Optional override for the browser WebSocket URL (dev or prod). */
   readonly VITE_WS_BACKEND_URL?: string;
 }
 
