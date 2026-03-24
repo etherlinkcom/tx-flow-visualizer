@@ -6,7 +6,7 @@ Real-time Etherlink transaction flow monitor – pre-confirmation tracking visua
 
 ```
 Browser 1 ──┐                              ┌── tez_newIncludedTransactions ──► EVM node
-Browser 2 ──┤── ws://host:8080 ──► server ──┼── tez_newPreconfirmedReceipts ──► EVM node
+Browser 2 ──┤── wss://host (same as HTTPS) ──► server ──┼── tez_newPreconfirmedReceipts ──► EVM node
 Browser N ──┘   (fan-out + static files)   └── newHeads ──────────────────► EVM node
 ```
 
@@ -44,27 +44,13 @@ docker compose up --build   # app available on http://localhost:8080
 
 ## GCP Cloud Run deployment
 
-Push to **`main`** to trigger the GitHub Actions workflow (`.github/workflows/deploy.yaml`).
+Pushing to **`main`** runs [`.github/workflows/deploy.yaml`](.github/workflows/deploy.yaml): build the Docker image, push to **Artifact Registry**, deploy to **Cloud Run**. Defaults and optional overrides live in that workflow and its comments.
 
-Required GitHub **secrets**:
+**GitHub Actions secrets (required):** `GCP_PROJECT_ID`, `GCP_SA_KEY`, `TEZOS_WS_URL` (private `wss://…` URL; server-side only, not `VITE_*`).
 
-| Secret | Description |
-|---|---|
-| `GCP_PROJECT_ID` | GCP project ID |
-| `GCP_SA_KEY` | **Full JSON** of a service account key (paste the entire file contents into the secret). The `google-github-actions/auth` action expects raw JSON for `credentials_json`, not a base64 string. |
-| `TEZOS_WS_URL` | Private EVM node WebSocket URL |
+**Optional secrets:** `ALLOWED_ORIGINS`, `RECONNECT_DELAY_MS`.
 
-Optional secrets: `ALLOWED_ORIGINS`, `RECONNECT_DELAY_MS`. Optional **repository variables**: `GCP_REGION`, `GCP_SERVICE_NAME`.
-
-**IAM roles** for that service account (minimum to match this workflow):
-
-| Role | Why |
-|---|---|
-| `roles/run.admin` | Deploy and update the Cloud Run service |
-| `roles/iam.serviceAccountUser` | Act as the Cloud Run runtime service account when deploying |
-| `roles/storage.admin` | Push images to **GCR** (`gcr.io/...`) — or use Artifact Registry and grant `roles/artifactregistry.writer` instead (then change the image URL in the workflow) |
-
-The workflow deploys with **`--timeout 3600`** (seconds) so long-lived browser WebSockets are less likely to be cut off at Cloud Run’s default 300s limit.
+**Custom domain / DNS, IAM, repo variables, image naming:** [`docs/DEVOPS_REQUEST.md`](docs/DEVOPS_REQUEST.md) · domain steps: [`docs/GCP_DEPLOYMENT_AND_DOMAIN.md`](docs/GCP_DEPLOYMENT_AND_DOMAIN.md).
 
 ## Environment variables
 

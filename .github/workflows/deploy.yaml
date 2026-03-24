@@ -1,26 +1,17 @@
 # Deploy to GCP Cloud Run
 #
 # Required GitHub secrets:
-#   GCP_PROJECT_ID        – your GCP project ID (e.g. my-project-123)
-#   GCP_SA_KEY            – full JSON body of a service account key (paste the
-#                           entire *.json file contents into the secret — not base64).
-#                           google-github-actions/auth expects credentials_json.
-#   TEZOS_WS_URL          – private EVM WebSocket URL (wss://...)
+#   GCP_PROJECT_ID, GCP_SA_KEY, TEZOS_WS_URL
 #
-# Service account roles (see README for details):
-#   • roles/run.admin
-#   • roles/iam.serviceAccountUser
-#   • roles/artifactregistry.writer
+# Optional repository variables (override defaults when DevOps differs):
+#   GCP_REGION            – default europe-west2 (match Artifact Registry + Cloud Run)
+#   GCP_AR_REPOSITORY     – default containers
+#   GCP_SERVICE_NAME      – default tx-flow-visualizer
+#   GCP_REGISTRY          – full AR image path without tag (rare; same region as REGION)
 #
-# Optional repository variables (Settings → Secrets and variables → Actions → Variables):
-#   GCP_REGION            – Cloud Run + Artifact Registry region (default: europe-west2)
-#   GCP_AR_REPOSITORY     – AR Docker repo name created in GCP (default: containers)
-#   GCP_SERVICE_NAME      – Cloud Run service name (default: tx-flow-visualizer)
-#   GCP_REGISTRY          – Full AR image path without tag (must stay in same region as GCP_REGION for docker push)
+# Optional secrets: ALLOWED_ORIGINS, RECONNECT_DELAY_MS
 #
-# Optional GitHub secrets:
-#   ALLOWED_ORIGINS       – comma-separated allowed browser origins (omit = allow all)
-#   RECONNECT_DELAY_MS    – upstream reconnect delay in milliseconds
+# IAM: roles/run.admin, roles/iam.serviceAccountUser, roles/artifactregistry.writer
 
 name: Deploy to GCP Cloud Run
 
@@ -30,18 +21,14 @@ on:
       - main
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  # Override these in your repository variables (Settings → Secrets and variables → Variables):
   REGION: ${{ vars.GCP_REGION != '' && vars.GCP_REGION || 'europe-west2' }}
   SERVICE_NAME: ${{ vars.GCP_SERVICE_NAME != '' && vars.GCP_SERVICE_NAME || 'tx-flow-visualizer' }}
-  # Default image: Artifact Registry (Docker repo must exist in GCP). Override with GCP_REGISTRY if needed.
   IMAGE: ${{ vars.GCP_REGISTRY != '' && vars.GCP_REGISTRY || format('{0}-docker.pkg.dev/{1}/{2}/tx-flow-visualizer', vars.GCP_REGION != '' && vars.GCP_REGION || 'europe-west2', secrets.GCP_PROJECT_ID, vars.GCP_AR_REPOSITORY != '' && vars.GCP_AR_REPOSITORY || 'containers') }}
 
 jobs:
   deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
 
@@ -74,7 +61,6 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          # Build the --set-env-vars string; only include optional vars when set
           ENV_VARS="TEZOS_WS_URL=${{ secrets.TEZOS_WS_URL }}"
           if [ -n "${{ secrets.ALLOWED_ORIGINS }}" ]; then
             ENV_VARS="${ENV_VARS},ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}"
