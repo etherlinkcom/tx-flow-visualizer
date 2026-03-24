@@ -1,0 +1,83 @@
+# Build Docker image, push to Artifact Registry, deploy to Cloud Run.
+#
+# Trigger: connect this repo in Cloud Build (2nd gen) and run on push to main,
+# or submit manually: gcloud builds submit --config=cloudbuild.yaml .
+#
+# Substitutions (defaults match the former GitHub Actions workflow):
+#   _REGION, _AR_REPOSITORY, _SERVICE_NAME — Cloud Run + Artifact Registry layout
+#   _TEZOS_WS_SECRET — Secret Manager *name* (not value) holding the upstream wss URL
+#   _ALLOWED_ORIGINS_SECRET, _RECONNECT_DELAY_MS_SECRET — optional SM names; leave "" to skip
+#
+# Create secrets in Secret Manager (example names):
+#   tezos-ws-url  → payload = private wss://... (required)
+#
+# IAM (Cloud Build service account, usually PROJECT_NUMBER@cloudbuild.gserviceaccount.com):
+#   roles/run.admin, roles/artifactregistry.writer,
+#   roles/iam.serviceAccountUser on the Cloud Run runtime SA,
+#   secretmanager.secretAccessor on each secret referenced in --set-secrets
+# Runtime SA needs secretmanager.secretAccessor on each secret used in --set-secrets.
+
+substitutions:
+  _REGION: europe-west2
+  _AR_REPOSITORY: containers
+  _SERVICE_NAME: tx-flow-visualizer
+  _TEZOS_WS_SECRET: tezos-ws-url
+  _ALLOWED_ORIGINS_SECRET: ""
+  _RECONNECT_DELAY_MS_SECRET: ""
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:${COMMIT_SHA}
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:latest
+      - .
+
+  - id: push-sha
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:${COMMIT_SHA}
+    waitFor:
+      - build
+
+  - id: push-latest
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:latest
+    waitFor:
+      - build
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:${COMMIT_SHA}"
+        SECRETS="TEZOS_WS_URL=${_TEZOS_WS_SECRET}:latest"
+        if [[ -n "${_ALLOWED_ORIGINS_SECRET}" ]]; then
+          SECRETS+=",ALLOWED_ORIGINS=${_ALLOWED_ORIGINS_SECRET}:latest"
+        fi
+        if [[ -n "${_RECONNECT_DELAY_MS_SECRET}" ]]; then
+          SECRETS+=",RECONNECT_DELAY_MS=${_RECONNECT_DELAY_MS_SECRET}:latest"
+        fi
+        gcloud run deploy "${_SERVICE_NAME}" \
+          --image="$$IMAGE" \
+          --region="${_REGION}" \
+          --platform=managed \
+          --allow-unauthenticated \
+          --port=8080 \
+          --timeout=3600 \
+          --min-instances=1 \
+          --max-instances=1 \
+          --set-secrets="$$SECRETS" \
+          --quiet
+    waitFor:
+      - push-sha
+      - push-latest

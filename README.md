@@ -44,13 +44,11 @@ docker compose up --build   # app available on http://localhost:8080
 
 ## GCP Cloud Run deployment
 
-Pushing to **`main`** runs [`.github/workflows/deploy.yaml`](.github/workflows/deploy.yaml): build the Docker image, push to **Artifact Registry**, deploy to **Cloud Run**. Defaults and optional overrides live in that workflow and its comments.
+**Cloud Build** ([`cloudbuild.yaml`](cloudbuild.yaml)) builds the Docker image, pushes to **Artifact Registry**, and deploys **Cloud Run**. Connect the GitHub repo in **Cloud Build → Triggers** (push to **`main`**) or run `gcloud builds submit --config=cloudbuild.yaml .`.
 
-**GitHub Actions secrets (required):** `GCP_PROJECT_ID`, `GCP_SA_KEY`, `TEZOS_WS_URL` (private `wss://…` URL; server-side only, not `VITE_*`).
+Runtime config uses **Secret Manager** (not GitHub secrets): store `TEZOS_WS_URL` (and optionally `ALLOWED_ORIGINS`, `RECONNECT_DELAY_MS`) as secrets; the build maps them via `cloudbuild.yaml` substitutions (`_TEZOS_WS_SECRET`, etc.).
 
-**Optional secrets:** `ALLOWED_ORIGINS`, `RECONNECT_DELAY_MS`.
-
-**Custom domain / DNS, IAM, repo variables, image naming:** [`docs/DEVOPS_REQUEST.md`](docs/DEVOPS_REQUEST.md) · domain steps: [`docs/GCP_DEPLOYMENT_AND_DOMAIN.md`](docs/GCP_DEPLOYMENT_AND_DOMAIN.md).
+**Custom domain / DNS, IAM, triggers:** [`docs/DEVOPS_REQUEST.md`](docs/DEVOPS_REQUEST.md) · domain steps: [`docs/GCP_DEPLOYMENT_AND_DOMAIN.md`](docs/GCP_DEPLOYMENT_AND_DOMAIN.md).
 
 ## Environment variables
 
