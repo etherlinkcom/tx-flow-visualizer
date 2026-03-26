@@ -26,6 +26,9 @@ server-dist
 
 .env
 
+# Claude Code
+.claude/
+
 # Legacy – backend now merged into root
 backend/dist
 backend/node_modules
