@@ -264,6 +264,20 @@ export const TransactionMonitor = () => {
             if (paramsPayload && "result" in paramsPayload) {
               onResult(paramsPayload.result);
             }
+            return;
+          }
+
+          // Handle JSON-RPC error responses (e.g. server rejected subscribe because
+          // upstream subId isn't ready yet). Close so onclose → scheduleReconnect fires.
+          if (
+            typeof payload === "object" &&
+            payload !== null &&
+            "error" in payload
+          ) {
+            const err = (payload as { error?: { message?: string } }).error;
+            console.warn(`[${stream}] Subscribe rejected: ${err?.message ?? "unknown"} — will retry`);
+            setStatus(prev => ({ ...prev, [stream]: "error" }));
+            socket?.close();
           }
         };
 
