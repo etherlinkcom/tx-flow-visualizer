@@ -57,33 +57,17 @@ steps:
     waitFor:
       - build
 
-  - id: deploy
+  - id: create-release
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
       - -c
       - |
         set -euo pipefail
-        IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:${COMMIT_SHA}"
-        SECRETS="TEZOS_WS_URL=${_TEZOS_WS_SECRET}:latest"
-        if [[ -n "${_ALLOWED_ORIGINS_SECRET}" ]]; then
-          SECRETS+=",ALLOWED_ORIGINS=${_ALLOWED_ORIGINS_SECRET}:latest"
-        fi
-        if [[ -n "${_RECONNECT_DELAY_MS_SECRET}" ]]; then
-          SECRETS+=",RECONNECT_DELAY_MS=${_RECONNECT_DELAY_MS_SECRET}:latest"
-        fi
-        gcloud run deploy "${_SERVICE_NAME}" \
-          --image="$$IMAGE" \
+        gcloud deploy releases create "release-${COMMIT_SHA}" \
+          --delivery-pipeline="${_SERVICE_NAME}" \
           --region="${_REGION}" \
-          --platform=managed \
-          --allow-unauthenticated \
-          --port=8080 \
-          --timeout=3600 \
-          --min-instances=1 \
-          --max-instances=1 \
-          --set-secrets="$$SECRETS" \
-          --service-account="${_RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
-          --quiet
+          --images="tx-flow-visualizer=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:${COMMIT_SHA}"
     waitFor:
       - push-sha
       - push-latest
