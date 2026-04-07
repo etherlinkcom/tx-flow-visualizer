@@ -1,0 +1,65 @@
+# Preview deployment for pull requests.
+# Trigger: Cloud Build PR trigger on pull_request to main.
+# Deploys to a single shared preview Cloud Run service (tx-flow-visualizer-preview).
+# Set _PR_NUMBER substitution in the trigger config.
+
+serviceAccount: projects/${PROJECT_ID}/serviceAccounts/${_DEPLOYER_SA}@${PROJECT_ID}.iam.gserviceaccount.com
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _REGION: europe-west2
+  _AR_REPOSITORY: tx-flow-visualizer
+  _SERVICE_NAME: tx-flow-visualizer-preview
+  _TEZOS_WS_SECRET: tezos-ws-url
+  _ALLOWED_ORIGINS_SECRET: ""
+  _RECONNECT_DELAY_MS_SECRET: ""
+  _DEPLOYER_SA: tx-flow-visualizer-deployer
+  _RUNTIME_SA: tx-flow-visualizer-runtime
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:pr-${_PR_NUMBER}
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:pr-${_PR_NUMBER}
+    waitFor:
+      - build
+
+  - id: deploy-preview
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}/tx-flow-visualizer:pr-${_PR_NUMBER}"
+        SECRETS="TEZOS_WS_URL=${_TEZOS_WS_SECRET}:latest"
+        if [[ -n "${_ALLOWED_ORIGINS_SECRET}" ]]; then
+          SECRETS+=",ALLOWED_ORIGINS=${_ALLOWED_ORIGINS_SECRET}:latest"
+        fi
+        if [[ -n "${_RECONNECT_DELAY_MS_SECRET}" ]]; then
+          SECRETS+=",RECONNECT_DELAY_MS=${_RECONNECT_DELAY_MS_SECRET}:latest"
+        fi
+        gcloud run deploy "${_SERVICE_NAME}" \
+          --image="$$IMAGE" \
+          --region="${_REGION}" \
+          --platform=managed \
+          --allow-unauthenticated \
+          --port=8080 \
+          --timeout=3600 \
+          --min-instances=0 \
+          --max-instances=1 \
+          --set-secrets="$$SECRETS" \
+          --service-account="${_RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+          --quiet
+    waitFor:
+      - push

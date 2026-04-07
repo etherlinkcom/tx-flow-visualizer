@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+server-dist
 *.local
 
 # Editor directories and files
@@ -24,3 +25,10 @@ dist-ssr
 *.sw?
 
 .env
+
+# Claude Code
+.claude/
+
+# Legacy – backend now merged into root
+backend/dist
+backend/node_modules

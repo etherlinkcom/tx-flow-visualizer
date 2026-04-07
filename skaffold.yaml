@@ -1,0 +1,9 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+profiles:
+- name: prod
+  deploy:
+    cloudrun: {}
+manifests:
+  rawYaml:
+  - cloudrun-prod.yaml

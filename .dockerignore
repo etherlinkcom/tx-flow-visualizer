@@ -1,0 +1,10 @@
+node_modules
+dist
+server-dist
+.claude
+CLAUDE.md
+cli
+docs
+.env
+.env.*
+*.md

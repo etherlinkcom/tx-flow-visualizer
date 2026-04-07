@@ -1,73 +1,77 @@
-# Welcome to your Lovable project
+# TX Flow Visualizer
 
-## Project info
+Real-time Etherlink transaction flow monitor – pre-confirmation tracking visualised in the browser.
 
-**URL**: https://lovable.dev/projects/b1abbc61-7292-4ee3-82e5-fff6c857d2bd
+## Architecture
 
-## How can I edit this code?
+```
+Browser 1 ──┐                              ┌── tez_newIncludedTransactions ──► EVM node
+Browser 2 ──┤── wss://host (same as HTTPS) ──► server ──┼── tez_newPreconfirmedReceipts ──► EVM node
+Browser N ──┘   (fan-out + static files)   └── newHeads ──────────────────► EVM node
+```
 
-There are several ways of editing your application.
+A single Node.js process:
+- Serves the compiled React frontend (static files)
+- Maintains exactly **3 persistent WebSocket connections** to the EVM node (one per subscription stream), regardless of how many browser clients are connected
+- Fans out EVM events to every subscribed browser client → N clients = **3 upstream connections total** instead of 3×N
 
-**Use Lovable**
+The EVM node URL (`TEZOS_WS_URL`) is a server-side environment variable and is **never** sent to browsers.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/b1abbc61-7292-4ee3-82e5-fff6c857d2bd) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Quick start (development)
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+cp .env.example .env        # fill in TEZOS_WS_URL with the real EVM node URL
+npm install
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Terminal 1 – Node fan-out server (listens on port 3001; PORT is set by npm script)
+npm run server:dev
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Terminal 2 – Vite dev server with HMR (http://localhost:8080)
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+Open the app at **http://localhost:8080**. The UI opens WebSockets to **`/ws` on the Vite origin**, and Vite proxies those upgrades to the Node server on port **3001**. You do not need `VITE_WS_BACKEND_URL` unless you use a custom setup.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Docker (single container)
 
-**Use GitHub Codespaces**
+```sh
+# Create a .env file at the repo root:
+#   TEZOS_WS_URL=wss://your-private-evm-node/ws
+#   ALLOWED_ORIGINS=https://your-domain.com   (optional)
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+docker compose up --build   # app available on http://localhost:8080
+```
 
-## What technologies are used for this project?
+## GCP Cloud Run deployment
 
-This project is built with:
+**Cloud Build** ([`cloudbuild.yaml`](cloudbuild.yaml)) builds the Docker image, pushes to **Artifact Registry**, and deploys **Cloud Run**. Connect the GitHub repo in **Cloud Build → Triggers** (push to **`main`**) or run `gcloud builds submit --config=cloudbuild.yaml .`.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Runtime config uses **Secret Manager** (not GitHub secrets): store `TEZOS_WS_URL` (and optionally `ALLOWED_ORIGINS`, `RECONNECT_DELAY_MS`) as secrets; the build maps them via `cloudbuild.yaml` substitutions (`_TEZOS_WS_SECRET`, etc.).
 
-## How can I deploy this project?
+**Custom domain / DNS, IAM, triggers:** [`docs/DEVOPS_REQUEST.md`](docs/DEVOPS_REQUEST.md) · domain steps: [`docs/GCP_DEPLOYMENT_AND_DOMAIN.md`](docs/GCP_DEPLOYMENT_AND_DOMAIN.md).
 
-Simply open [Lovable](https://lovable.dev/projects/b1abbc61-7292-4ee3-82e5-fff6c857d2bd) and click on Share -> Publish.
+## Environment variables
 
-## Can I connect a custom domain to my Lovable project?
+| Variable | Default | Description |
+|---|---|---|
+| `TEZOS_WS_URL` | *(required)* | Private EVM node WebSocket URL |
+| `PORT` | `8080` | Port the server listens on |
+| `RECONNECT_DELAY_MS` | `3000` | Delay (ms) before retrying a dropped upstream connection |
+| `ALLOWED_ORIGINS` | *(all)* | Comma-separated allowed browser origins |
 
-Yes, you can!
+## Technology stack
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- **Frontend:** Vite · React 18 · TypeScript · shadcn/ui · Tailwind CSS
+- **Server:** Node.js · TypeScript · [ws](https://github.com/websockets/ws)
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Vite dev server with HMR on port 8080 |
+| `npm run server:dev` | Node server with auto-reload on port 3001 |
+| `npm run build` | Compile React frontend → `dist/` |
+| `npm run build:server` | Compile Node server → `server-dist/` |
+| `npm start` | Run the compiled server (serves both static files and WS) |
+| `npm run lint` | ESLint |
+

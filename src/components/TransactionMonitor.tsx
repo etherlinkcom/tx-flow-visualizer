@@ -44,7 +44,14 @@ const parseTxHash = (payload: unknown): string | null => {
 };
 
 export const TransactionMonitor = () => {
-  const streamEndpoint = import.meta.env.VITE_TEZOS_WS_URL;
+  // Production: Node serves HTTP + WebSocket on the same host/port (no path).
+  // Development: Vite (this origin) proxies /ws → Node on PORT=3001 (see vite.config.ts).
+  // Override with VITE_WS_BACKEND_URL when you need a custom dev/prod URL.
+  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const sameOrigin = `${wsProtocol}//${window.location.host}`;
+  const streamEndpoint =
+    import.meta.env.VITE_WS_BACKEND_URL ??
+    (import.meta.env.DEV ? `${sameOrigin}/ws` : sameOrigin);
   const requestIdRef = useRef(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -55,7 +62,6 @@ export const TransactionMonitor = () => {
     receipts: "disconnected",
     heads: "disconnected",
   });
-  const [lastHead, setLastHead] = useState<Record<string, unknown> | null>(null);
   const [page, setPage] = useState(1);
 
   const upsertBlock = useCallback((incoming: Block | ((prev: Block[]) => Block)) => {
@@ -124,6 +130,7 @@ export const TransactionMonitor = () => {
       return updated;
     });
   }, []);
+
   useEffect(() => {
     if (
       transactions.length > 0 &&
@@ -145,8 +152,6 @@ export const TransactionMonitor = () => {
 
     return () => clearTimeout(timer);
   }, [transactions]);
-  console.log(blocks);
-
   // Auto-scroll when last transaction slides in
   useEffect(() => {
     if (transactions.length > 0 && scrollRef.current) {
@@ -162,33 +167,39 @@ export const TransactionMonitor = () => {
 
   useEffect(() => {
     if (!streamEndpoint) {
-      setStatus({ included: "error", receipts: "error", heads: "error" });
-      setPage(1);
-      setBlocks([]);
-      setLastHead(null);
-      setTransactions([]);
       return;
     }
+
+    const maxReconnectDelayMs = 30_000;
 
     const subscribe = (
       stream: StreamKey,
       params: [string],
       onResult: (payload: unknown) => void
     ) => {
-      let socket: WebSocket;
-      try {
-        socket = new WebSocket(streamEndpoint);
-      } catch (error) {
-        console.error(`Failed to create WebSocket for ${stream}`, error);
-        setStatus(prev => ({ ...prev, [stream]: "error" }));
-        return () => {};
-      }
       let isActive = true;
+      let socket: WebSocket | null = null;
+      let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+      let reconnectAttempt = 0;
 
-      setStatus(prev => ({ ...prev, [stream]: "connecting" }));
+      const clearReconnect = () => {
+        if (reconnectTimer !== null) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+      };
+
+      const scheduleReconnect = () => {
+        if (!isActive) return;
+        clearReconnect();
+        const exp = Math.min(maxReconnectDelayMs, 1000 * 2 ** Math.min(reconnectAttempt, 8));
+        const delay = exp + Math.random() * 400;
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
 
       const sendSubscribe = () => {
-        if (!isActive || socket.readyState !== WebSocket.OPEN) return;
+        if (!isActive || !socket || socket.readyState !== WebSocket.OPEN) return;
         try {
           const requestId = requestIdRef.current++;
           const payload = {
@@ -204,56 +215,97 @@ export const TransactionMonitor = () => {
         }
       };
 
-      socket.addEventListener("open", () => {
-        setStatus(prev => ({ ...prev, [stream]: "connected" }));
-        sendSubscribe();
-      });
+      const connect = () => {
+        if (!isActive) return;
+        clearReconnect();
+        socket?.close();
 
-      // In some environments the socket can already be open (or transition quickly)
-      // before the event listener is attached; try to subscribe immediately too.
-      if (socket.readyState === WebSocket.OPEN) {
-        setStatus(prev => ({ ...prev, [stream]: "connected" }));
-        sendSubscribe();
-      }
-
-      socket.onmessage = (event) => {
-        let payload: unknown;
+        let nextSocket: WebSocket;
         try {
-          payload = JSON.parse(event.data);
+          nextSocket = new WebSocket(streamEndpoint);
         } catch (error) {
-          console.warn(`Malformed payload on ${stream}:`, error);
+          console.error(`Failed to create WebSocket for ${stream}`, error);
+          setStatus(prev => ({ ...prev, [stream]: "error" }));
+          scheduleReconnect();
           return;
         }
 
-        if (
-          typeof payload === "object" &&
-          payload !== null &&
-          "method" in payload &&
-          (payload as { method?: string }).method === "eth_subscription"
-        ) {
-          const paramsPayload = (payload as { params?: { result?: unknown } }).params;
-          if (paramsPayload && "result" in paramsPayload) {
-            onResult(paramsPayload.result);
-          }
+        socket = nextSocket;
+        setStatus(prev => ({ ...prev, [stream]: "connecting" }));
+
+        socket.addEventListener("open", () => {
+          reconnectAttempt = 0;
+          setStatus(prev => ({ ...prev, [stream]: "connected" }));
+          sendSubscribe();
+        });
+
+        if (socket.readyState === WebSocket.OPEN) {
+          reconnectAttempt = 0;
+          setStatus(prev => ({ ...prev, [stream]: "connected" }));
+          sendSubscribe();
         }
+
+        socket.onmessage = (event) => {
+          let payload: unknown;
+          try {
+            payload = JSON.parse(event.data);
+          } catch (error) {
+            console.warn(`Malformed payload on ${stream}:`, error);
+            return;
+          }
+
+          if (
+            typeof payload === "object" &&
+            payload !== null &&
+            "method" in payload &&
+            (payload as { method?: string }).method === "eth_subscription"
+          ) {
+            const paramsPayload = (payload as { params?: { result?: unknown } }).params;
+            if (paramsPayload && "result" in paramsPayload) {
+              onResult(paramsPayload.result);
+            }
+            return;
+          }
+
+          // Handle JSON-RPC error responses (e.g. server rejected subscribe because
+          // upstream subId isn't ready yet). Close so onclose → scheduleReconnect fires.
+          if (
+            typeof payload === "object" &&
+            payload !== null &&
+            "error" in payload
+          ) {
+            const err = (payload as { error?: { message?: string } }).error;
+            console.warn(`[${stream}] Subscribe rejected: ${err?.message ?? "unknown"} — will retry`);
+            setStatus(prev => ({ ...prev, [stream]: "error" }));
+            socket?.close();
+          }
+        };
+
+        socket.onerror = (event) => {
+          console.error(`WebSocket error on ${stream}`, event);
+          setStatus(prev => ({ ...prev, [stream]: "error" }));
+        };
+
+        socket.onclose = (event) => {
+          console.warn(
+            `WebSocket closed on ${stream}`,
+            { code: event.code, reason: event.reason, wasClean: event.wasClean }
+          );
+          setStatus(prev => ({ ...prev, [stream]: "disconnected" }));
+          socket = null;
+          if (isActive) {
+            scheduleReconnect();
+          }
+        };
       };
 
-      socket.onerror = (event) => {
-        console.error(`WebSocket error on ${stream}`, event);
-        setStatus(prev => ({ ...prev, [stream]: "error" }));
-      };
-
-      socket.onclose = (event) => {
-        console.warn(
-          `WebSocket closed on ${stream}`,
-          { code: event.code, reason: event.reason, wasClean: event.wasClean }
-        );
-        setStatus(prev => ({ ...prev, [stream]: "disconnected" }));
-      };
+      connect();
 
       return () => {
         isActive = false;
-        socket.close();
+        clearReconnect();
+        socket?.close();
+        socket = null;
       };
     };
 
@@ -272,12 +324,6 @@ export const TransactionMonitor = () => {
     });
 
     const unsubscribeHeads = subscribe("heads", ["newHeads"], (payload) => {
-      if (typeof payload === "object" && payload !== null) {
-        setLastHead(payload as Record<string, unknown>);
-      } else {
-        setLastHead({ raw: payload });
-      }
-
       const blockNumberHex =
         typeof payload === "object" &&
         payload !== null &&
@@ -323,6 +369,7 @@ export const TransactionMonitor = () => {
       ? durations.reduce((sum, value) => sum + value, 0) / durations.length
       : null;
 
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto">
@@ -352,11 +399,6 @@ export const TransactionMonitor = () => {
               Block stream: {status.heads}
             </Badge>
           </div>
-          {!streamEndpoint && (
-            <p className="text-sm text-destructive mt-3">
-              Configure <code className="font-mono">VITE_TEZOS_WS_URL</code> with a JSON-RPC WebSocket endpoint to see live data.
-            </p>
-          )}
         </div>
 
         <div className="mb-4">

@@ -1,0 +1,26 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: tx-flow-visualizer
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "1"
+    spec:
+      serviceAccountName: tx-flow-visualizer-runtime@etherlink-infra-prod-7b74.iam.gserviceaccount.com
+      timeoutSeconds: 3600
+      containers:
+      - image: tx-flow-visualizer  # replaced by Cloud Deploy at release time
+        ports:
+        - name: http1
+          containerPort: 8080
+        env:
+        - name: TEZOS_WS_URL
+          valueFrom:
+            secretKeyRef:
+              name: tezos-ws-url
+              key: latest
