@@ -8,7 +8,7 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 substitutions:
-  _REGION: europe-west2
+  _REGION: europe-west1
   _AR_REPOSITORY: tx-flow-visualizer
   _SERVICE_NAME: tx-flow-visualizer-preview
   _TEZOS_WS_SECRET: tezos-ws-url
