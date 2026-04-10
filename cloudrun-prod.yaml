@@ -4,6 +4,7 @@ metadata:
   name: tx-flow-visualizer
   annotations:
     run.googleapis.com/ingress: all
+    run.googleapis.com/default-url-disabled: 'true'
 spec:
   template:
     metadata:
