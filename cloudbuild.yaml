@@ -83,6 +83,7 @@ steps:
           --max-instances=1 \
           --set-secrets="$$SECRETS" \
           --service-account="${_RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+          --no-default-url \
           --quiet
     waitFor:
       - push-sha
